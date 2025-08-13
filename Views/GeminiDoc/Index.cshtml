@@ -1,0 +1,240 @@
+@{
+    ViewData["Title"] = "Documentador Automático con IA";
+}
+
+<!-- Estructura HTML del Documentador -->
+<header class="text-center mb-8">
+    <h1 class="text-3xl md:text-4xl font-bold text-gray-900" style="color: var(--light-text);">@ViewData["Title"]</h1>
+    <p class="mt-2 text-lg" style="color: var(--medium-text);">Sube tus notebooks de Databricks y la IA generará la documentación técnica completa.</p>
+</header>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <!-- Panel de Carga -->
+    <div class="card flex flex-col justify-between">
+        <div>
+            <h2 class="text-xl font-semibold mb-4 text-gray-800" style="color: var(--light-text);">Subir Notebooks</h2>
+            <div id="drop-zone" class="mt-4 flex justify-center rounded-lg border border-dashed border-gray-900/25 px-6 py-10">
+                <div class="text-center">
+                    <svg class="mx-auto h-12 w-12 text-gray-300" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12A2.25 2.25 0 0120.25 20.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z" clip-rule="evenodd" />
+                    </svg>
+                    <div class="mt-4 flex text-sm leading-6 text-gray-600">
+                        <label for="file-upload" class="relative cursor-pointer rounded-md font-semibold text-blue-400 focus-within:outline-none hover:text-blue-500">
+                            <span>Sube uno o más archivos</span>
+                            <input id="file-upload" name="file-upload" type="file" class="sr-only" accept=".py,.ipynb" multiple>
+                        </label>
+                        <p class="pl-1">o arrástralos aquí</p>
+                    </div>
+                    <p class="text-xs leading-5 text-gray-600">Archivos permitidos: .py, .ipynb</p>
+                    <div id="fileList" class="mt-2 text-sm text-left text-gray-900"></div>
+                </div>
+            </div>
+        </div>
+        <button
+        id="generateButton"
+        type="button"
+        class="btn btn-primary w-100 mt-3 d-flex align-items-center justify-content-center">
+        <span
+            id="buttonSpinner"
+            class="spinner-border spinner-border-sm me-2 visually-hidden"
+            role="status"
+            aria-hidden="true"
+        ></span>
+        <span id="buttonText">Generar Documentación</span>
+        </button>
+    </div>
+
+    <!-- Panel de Resultados -->
+    <div class="card">
+        <h2 class="text-xl font-semibold mb-4 text-gray-800" style="color: var(--light-text);">Documentación Generada por IA</h2>
+        <div id="documentationOutput" class="w-full h-96 md:h-[600px] p-4 border border-gray-200 rounded-lg overflow-auto bg-gray-50 prose-custom">
+            <p class="text-gray-500">La documentación aparecerá aquí...</p>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script type="module">
+    // Importamos la librería de Gemini
+    import { GoogleGenerativeAI } from "https://esm.run/@@google/generative-ai";
+
+    // --- Referencias a Elementos del DOM ---
+    const generateButton = document.getElementById('generateButton');
+    const buttonText = document.getElementById('buttonText');
+    const buttonSpinner = document.getElementById('buttonSpinner');
+    const documentationOutput = document.getElementById('documentationOutput');
+    const fileUpload = document.getElementById('file-upload');
+    const fileListDisplay = document.getElementById('fileList');
+    const dropZone = document.getElementById('drop-zone');
+    
+    let notebooksContent = [];
+
+    // --- Lógica de Carga de Archivos ---
+    const handleFiles = async (files) => {
+        if (!files || files.length === 0) {
+            notebooksContent = [];
+            fileListDisplay.innerHTML = '';
+            return;
+        }
+        const sortedFiles = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
+        fileListDisplay.innerHTML = '<strong style=""color: var(--light-text);"">Archivos seleccionados:</strong><ul>' + sortedFiles.map(f => `<li style=""color: var(--medium-text);"">${f.name}</li>`).join('') + '</ul>';
+        
+        notebooksContent = [];
+        const readPromises = sortedFiles.map(file => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    let content = e.target.result;
+                    if (file.name.endsWith('.ipynb')) {
+                        try {
+                            const notebookJson = JSON.parse(content);
+                            content = notebookJson.cells
+                                .filter(cell => cell.cell_type === 'code' && cell.source.length > 0)
+                                .map((cell, index) => `# Celda de Código [${index + 1}]:\n` + cell.source.join(''))
+                                .join('\n\n---\n\n');
+                        } catch (jsonError) {
+                            reject(new Error(`Error al leer ${file.name}. No es un JSON válido.`));
+                            return;
+                        }
+                    }
+                    resolve({ name: file.name, content: content });
+                };
+                reader.onerror = () => reject(new Error(`Hubo un error al leer el archivo ${file.name}.`));
+                reader.readAsText(file);
+            });
+        });
+
+        try {
+            notebooksContent = await Promise.all(readPromises);
+        } catch (error) {
+            documentationOutput.innerHTML = `<p class="text-red-500">${error.message}</p>`;
+            notebooksContent = [];
+        }
+    };
+    
+    fileUpload.addEventListener('change', (event) => handleFiles(event.target.files));
+    dropZone.addEventListener('dragover', (e) => e.preventDefault());
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        handleFiles(e.dataTransfer.files);
+    });
+
+    // --- Lógica Principal de Generación ---
+    generateButton.addEventListener('click', async () => {
+        if (notebooksContent.length === 0) {
+            documentationOutput.innerHTML = '<p class="text-red-500">Por favor, sube uno o más archivos de notebook válidos.</p>';
+            return;
+        }
+
+        // Estado de carga
+        buttonText.classList.add('hidden');
+        buttonSpinner.classList.remove('hidden');
+        generateButton.disabled = true;
+        
+        let allDocumentation = [];
+        const notebookNames = notebooksContent.map(n => n.name);
+        
+        try {
+            // 1. Generar Introducción
+            documentationOutput.innerHTML = `<div class="loader"></div><p class="text-center text-gray-500">Generando introducción general...</p>`;
+            const intro = await generateSummarySection('Introducción', notebookNames);
+            allDocumentation.push(intro);
+
+            // 2. Generar documentación para cada notebook
+            for (let i = 0; i < notebooksContent.length; i++) {
+                const notebook = notebooksContent[i];
+                documentationOutput.innerHTML = `<div class="loader"></div><p class="text-center text-gray-500">Generando documentación para <strong>${notebook.name}</strong> (${i + 1} de ${notebooksContent.length})...</p>`;
+                const documentation = await generateDocumentationWithAI(notebook.content, notebook.name);
+                allDocumentation.push(documentation);
+            }
+
+            // 3. Generar Conclusión
+            documentationOutput.innerHTML = `<div class="loader"></div><p class="text-center text-gray-500">Generando conclusión final...</p>`;
+            const conclusion = await generateSummarySection('Conclusión', notebookNames);
+            allDocumentation.push(conclusion);
+
+            // 4. Ensamblar y renderizar
+            documentationOutput.innerHTML = marked.parse(allDocumentation.join('\n\n<hr>\n\n'));
+
+        } catch (error) {
+            console.error("Error generando documentación:", error);
+            documentationOutput.innerHTML = `<p class="text-red-500">Hubo un error al generar la documentación. Por favor, inténtalo de nuevo.<br><br>Detalle: ${error.message}</p>`;
+        } finally {
+            // Restaurar botón
+            buttonText.classList.remove('hidden');
+            buttonSpinner.classList.add('hidden');
+            generateButton.disabled = false;
+        }
+    });
+
+    // --- Funciones de IA ---
+    async function callGeminiAPI(prompt) {
+        // ⚠️ ADVERTENCIA: La clave de API está expuesta en el código del cliente.
+        const API_KEY = "AIzaSyD0RsVwbMR7rAjSptn2iNg3yCCC2lBd-1M";
+        
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+    }
+
+    async function generateSummarySection(sectionType, notebookNames) {
+        let prompt;
+        if (sectionType === 'Introducción') {
+            prompt = `Actúa como un experto documentador técnico. Basado en la siguiente lista de notebooks, escribe una sección de 'Introducción' para un documento técnico que los engloba. Los notebooks son procesados en este orden: ${notebookNames.join(', ')}. Explica que el documento describe un flujo de trabajo cohesivo, el propósito general del conjunto de notebooks, y cómo cada uno contribuye al proceso general. La introducción debe ser profesional y concisa.`;
+        } else { // Conclusión
+            prompt = `Actúa como un experto documentador técnico. Basado en la siguiente lista de notebooks que ya han sido documentados: ${notebookNames.join(', ')}, escribe una sección de 'Conclusión'. Resume los logros clave del proceso completo ejecutado por estos notebooks. Menciona el valor o impacto del resultado final (por ejemplo, la creación de tablas analíticas confiables). Si es apropiado, sugiere posibles próximos pasos o áreas de mejora continua.`;
+        }
+        const summary = await callGeminiAPI(prompt);
+        return `\n# ${sectionType}\n\n${summary}`;
+    }
+    
+    async function generateDocumentationWithAI(code, notebookName) {
+        const prompt = `
+# CONTEXTO Y PERSONA
+Eres un arquitecto de datos senior y un experto documentador técnico con amplia experiencia en Databricks, PySpark y SQL. Tu audiencia es un nuevo desarrollador que necesita entender este notebook rápidamente para poder mantenerlo. Tu tono debe ser profesional, claro y técnico.
+
+# TAREA PRINCIPAL
+Tu tarea es generar una documentación técnica completa y precisa en formato Markdown para el siguiente código de un notebook de Databricks que te proporcionaré. El nombre del notebook es '${notebookName}'.
+
+# ESTRUCTURA DE LA DOCUMENTACIÓN (OBLIGATORIA)
+La documentación debe seguir estrictamente las siguientes secciones y formato, haciendo un ciclo idéntico para cada notebook:
+
+### ${notebookName}
+
+#### 1. Resumen General
+*Un párrafo conciso (2-4 frases) que describa el propósito de negocio y el objetivo técnico del notebook.*
+
+#### 2. Librerías y Dependencias
+*Una lista de las librerías importantes utilizadas y una breve descripción de su rol.*
+
+#### 3. Lógica Paso a Paso
+*Narra el flujo del proceso de principio a fin, describiendo el propósito de cada celda o grupo lógico de celdas.*
+
+#### 4. Descripción Detallada de Lógicas SQL
+*Esta es la sección más importante. Realiza un análisis técnico profundo de CADA consulta SQL o transformación PySpark significativa. NO OMITAS NI RESUMAS NINGUNA CONSULTA. Para cada una:*
+*- **Cita la consulta completa** dentro de un bloque de código SQL.
+*- **Explica en detalle** la lógica: qué tablas se unen, qué filtros se aplican, qué campos se calculan, etc.
+*- **No omitas ninguna consulta**. Si hay consultas complejas, desglosa su lógica en pasos más pequeños.
+
+#### 5. Entradas (Inputs)
+*Genera una lista de las **tablas o archivos de origen** que el notebook lee.*
+
+#### 6. Salidas (Outputs)
+*Genera una lista de las **tablas o archivos finales** que el notebook crea o modifica.*
+
+# REGLAS ADICIONALES
+- Basa tu análisis **únicamente** en el código proporcionado.
+- Evita frases introductorias como ""Claro, aquí tienes la documentación"".
+
+---
+CÓDIGO DEL NOTEBOOK:
+${code}
+`;
+        return await callGeminiAPI(prompt);
+    }
+</script>
+}

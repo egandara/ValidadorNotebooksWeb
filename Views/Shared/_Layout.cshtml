@@ -31,30 +31,44 @@
                         var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
                     }
                     <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+
                         @if (User.IsInRole("Admin") || User.IsInRole("ValidatorUser"))
                         {
                             <li class="nav-item @(currentController == "Home" ? "active" : "")">
-                                <a class="nav-link" asp-controller="Home" asp-action="Index">Validador</a>
+                                <a class="nav-link" asp-area="" asp-controller="Home" asp-action="Index">Validador</a>
                             </li>
                         }
                         @if (User.IsInRole("Admin") || User.IsInRole("TempCleanerUser"))
                         {
                             <li class="nav-item @(currentController == "TempTable" ? "active" : "")">
-                                <a class="nav-link" asp-controller="TempTable" asp-action="Index">Limpieza Tmp</a>
+                                <a class="nav-link" asp-area="" asp-controller="TempTable" asp-action="Index">Limpieza Tmp</a>
                             </li>
                         }
                         @if (User.IsInRole("Admin") || User.IsInRole("ParameterValidatorUser"))
                         {
                             <li class="nav-item @(currentController == "ParameterValidator" ? "active" : "")">
-                                <a class="nav-link" asp-controller="ParameterValidator" asp-action="Index">Validador Parámetros</a>
+                                <a class="nav-link" asp-area="" asp-controller="ParameterValidator" asp-action="Index">Validador Parámetros</a>
+                            </li>
+                        }
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <li class="nav-item @(currentController == "Documentation" ? "active" : "")">
+                                <a class="nav-link" asp-area="" asp-controller="Documentation" asp-action="Index">Documentador</a>
+                            </li>
+                        }
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <li class="nav-item @(currentController == "GeminiDoc" ? "active" : "")">
+                                <a class="nav-link" asp-controller="GeminiDoc" asp-action="Index">Documentador Gemini</a>
                             </li>
                         }
                         @if (User.IsInRole("Admin") || User.IsInRole("ValidatorUser"))
                         {
                             <li class="nav-item @(currentController == "History" ? "active" : "")">
-                                <a class="nav-link" asp-controller="History" asp-action="Index">Historial</a>
+                                <a class="nav-link" asp-area="" asp-controller="History" asp-action="Index">Historial</a>
                             </li>
                         }
+
                     </ul>
                     <partial name="_LoginPartial" />
                 </div>

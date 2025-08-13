@@ -316,3 +316,37 @@ a:hover {
     display: inline-flex !important;
     opacity: 1 !important;
 }
+
+/* Estilos para el Documentador Gemini */
+.prose-custom { color: #374151; }
+.prose-custom h1, .prose-custom h2, .prose-custom h3 { color: #111827; font-weight: 700; }
+.prose-custom code { background-color: #F3F4F6; color: #4B5563; padding: 2px 4px; border-radius: 4px; }
+.prose-custom pre { background-color: #1F2937; color: #D1D5DB; padding: 1rem; border-radius: 0.5rem; }
+.loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 2rem auto; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* ==========================================================================
+   ESTILOS PARA EL DOCUMENTADOR GEMINI
+   ========================================================================== */
+
+.gemini-drop-zone {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 2.5rem;
+    border: 2px dashed var(--border-color);
+    border-radius: 0.5rem;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.gemini-drop-zone:hover {
+    background-color: var(--navy-light);
+}
+
+.gemini-drop-zone svg {
+    margin: 0 auto;
+    height: 3rem;
+    width: 3rem;
+    color: var(--medium-text);
+}

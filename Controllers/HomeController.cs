@@ -19,7 +19,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NotebookValidator.Web.Controllers
 {
-    [Authorize(Roles = "Admin, ValidatorUser")]
+    [Authorize]
     public class HomeController : Controller
     {
         private readonly NotebookValidatorService _validatorService;
@@ -62,11 +62,12 @@ namespace NotebookValidator.Web.Controllers
 
             try
             {
-                // Lógica de procesamiento de archivos (sin cambios)...
+                // 1. Descomprimir ZIPs y crear una lista plana de todos los notebooks.
                 foreach (var file in files)
                 {
                     var tempFilePath = Path.Combine(tempDirectory, file.FileName);
                     using (var stream = new FileStream(tempFilePath, FileMode.Create)) { await file.CopyToAsync(stream); }
+
                     if (Path.GetExtension(file.FileName).Equals(".zip", StringComparison.OrdinalIgnoreCase))
                     {
                         var extractPath = Path.Combine(tempDirectory, Guid.NewGuid().ToString());
@@ -74,7 +75,10 @@ namespace NotebookValidator.Web.Controllers
                         ZipFile.ExtractToDirectory(tempFilePath, extractPath);
                         var notebookFilesInZip = Directory.GetFiles(extractPath, "*.*", SearchOption.AllDirectories)
                             .Where(f => f.EndsWith(".py") || f.EndsWith(".ipynb"));
-                        foreach (var notebookPath in notebookFilesInZip) { notebooksToProcess.Add((notebookPath, Path.GetFileName(notebookPath))); }
+                        foreach (var notebookPath in notebookFilesInZip)
+                        {
+                            notebooksToProcess.Add((notebookPath, Path.GetFileName(notebookPath)));
+                        }
                     }
                     else if (file.FileName.EndsWith(".py") || file.FileName.EndsWith(".ipynb"))
                     {
@@ -82,7 +86,7 @@ namespace NotebookValidator.Web.Controllers
                     }
                 }
 
-                // Verificar la cuota (sin cambios)...
+                // 2. Verificar la cuota.
                 if (user.AnalysisQuota < notebooksToProcess.Count)
                 {
                     return Json(new { 
@@ -92,7 +96,7 @@ namespace NotebookValidator.Web.Controllers
                     });
                 }
 
-                // Procesar cada notebook (sin cambios)...
+                // 3. Procesar cada notebook.
                 var allFindings = new List<Finding>();
                 foreach (var (tempPath, originalName) in notebooksToProcess)
                 {
@@ -100,9 +104,11 @@ namespace NotebookValidator.Web.Controllers
                     allFindings.AddRange(findings);
                 }
 
-                // Actualizar cuota y guardar historial (sin cambios)...
+                // 4. Descontar y guardar la nueva cuota.
                 user.AnalysisQuota -= notebooksToProcess.Count;
                 await _userManager.UpdateAsync(user);
+
+                // 5. Guardar el registro del análisis en el historial.
                 var analysisRun = new AnalysisRun
                 {
                     UserId = user.Id,
@@ -114,14 +120,19 @@ namespace NotebookValidator.Web.Controllers
                 _context.AnalysisRuns.Add(analysisRun);
                 await _context.SaveChangesAsync();
 
-                // Preparar y devolver la respuesta JSON (sin cambios)...
+                // 6. Preparar y devolver la respuesta JSON.
                 var summaryData = allFindings.GroupBy(f => f.FindingType).ToDictionary(g => g.Key, g => g.Count());
+                
                 HttpContext.Session.SetString("ValidationResults", JsonSerializer.Serialize(allFindings));
+                
                 return Json(new { summary = summaryData, findings = allFindings, hasResults = allFindings.Any() });
             }
             finally
             {
-                if (Directory.Exists(tempDirectory)) { Directory.Delete(tempDirectory, recursive: true); }
+                if (Directory.Exists(tempDirectory))
+                {
+                    Directory.Delete(tempDirectory, recursive: true);
+                }
             }
         }
         
@@ -141,20 +152,17 @@ namespace NotebookValidator.Web.Controllers
             {
                 var worksheet = workbook.Worksheets.Add("Reporte de Validación");
 
-                // --- 1. Encabezado ---
+                // Encabezado
                 var logoPath = Path.Combine(_hostEnvironment.WebRootPath, "img", "Bit-solucion-logo-menu.png");
                 if (System.IO.File.Exists(logoPath))
                 {
-                    var picture = worksheet.AddPicture(logoPath).MoveTo(worksheet.Cell("A1")).Scale(0.5);
+                    worksheet.AddPicture(logoPath).MoveTo(worksheet.Cell("A1")).Scale(0.5);
                 }
-                // NUEVO: Color de fondo para el logo
                 worksheet.Range("A1:B3").Style.Fill.BackgroundColor = XLColor.FromHtml("#07091e");
-
                 worksheet.Cell("C2").Value = "Reporte de Análisis de Notebooks";
                 worksheet.Cell("C2").Style.Font.Bold = true;
                 worksheet.Cell("C2").Style.Font.FontSize = 16;
                 worksheet.Range("C2:F2").Merge();
-
                 if (lastAnalysis != null)
                 {
                     worksheet.Cell("C4").Value = "Análisis ID:";
@@ -165,20 +173,17 @@ namespace NotebookValidator.Web.Controllers
                     worksheet.Cell("D6").Value = lastAnalysis.AnalysisTimestamp.ToString("g");
                 }
 
-                // --- 2. Tabla de Resumen ---
+                // Tabla de Resumen
                 var summaryHeaderRow = 11;
                 worksheet.Cell("A9").Value = "Resumen por Archivo y Tipo de Problema";
                 worksheet.Cell("A9").Style.Font.Bold = true;
-
                 var allProblemTypes = findings.Select(f => f.FindingType).Distinct().OrderBy(t => t).ToList();
                 var allFiles = findings.Select(f => f.FileName).Distinct().OrderBy(f => f).ToList();
-                
                 worksheet.Cell(summaryHeaderRow, 1).Value = "Notebook Analizado";
                 for (int i = 0; i < allProblemTypes.Count; i++)
                 {
                     worksheet.Cell(summaryHeaderRow, 2 + i).Value = allProblemTypes[i];
                 }
-                
                 for (int i = 0; i < allFiles.Count; i++)
                 {
                     var fileName = allFiles[i];
@@ -190,8 +195,6 @@ namespace NotebookValidator.Web.Controllers
                         worksheet.Cell(summaryHeaderRow + 1 + i, 2 + j).Value = count;
                     }
                 }
-
-                // NUEVO: Formato para la tabla de resumen
                 var summaryTableRange = worksheet.Range(summaryHeaderRow, 1, summaryHeaderRow + allFiles.Count, 1 + allProblemTypes.Count);
                 summaryTableRange.Style.Border.SetInsideBorder(XLBorderStyleValues.Thin);
                 summaryTableRange.Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin);
@@ -199,11 +202,10 @@ namespace NotebookValidator.Web.Controllers
                 summaryHeader.Style.Fill.BackgroundColor = XLColor.FromHtml("#0A192F");
                 summaryHeader.Style.Font.FontColor = XLColor.White;
 
-                // --- 3. Tabla de Detalles ---
+                // Tabla de Detalles
                 var detailsHeaderRow = summaryHeaderRow + allFiles.Count + 3;
                 worksheet.Cell(detailsHeaderRow, 1).Value = "Resultados Detallados";
                 worksheet.Cell(detailsHeaderRow, 1).Style.Font.Bold = true;
-                
                 worksheet.Cell(detailsHeaderRow + 2, 1).InsertTable(findings);
 
                 worksheet.Columns().AdjustToContents();

@@ -23,8 +23,11 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.R
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<NotebookValidatorService>();
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<TempTableService>();
 builder.Services.AddScoped<ParameterValidationService>();
+builder.Services.AddScoped<TestAIService>();
+builder.Services.AddScoped<DocumentationService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
